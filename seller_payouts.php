@@ -84,6 +84,8 @@ $hasUsers = table_exists($pdo, 'users');
 
 $payoutRows = [];
 $recentLedger = [];
+$allSellerBalances = [];
+$summarySellerIds = [];
 $summary = [
     'pending_requests' => 0,
     'approved_requests' => 0,
@@ -98,6 +100,19 @@ $summary = [
 ];
 
 try {
+    if ($hasBalances && function_exists('bv_seller_balance_all_sellers_summary')) {
+        $allSellerBalances = bv_seller_balance_all_sellers_summary();
+        foreach ($allSellerBalances as $sellerBalance) {
+            $summary['available_balance'] += (float)($sellerBalance['available_balance'] ?? 0);
+            $summary['pending_balance'] += (float)($sellerBalance['pending_balance'] ?? 0);
+            $summary['held_balance'] += (float)($sellerBalance['held_balance'] ?? 0);
+            $summary['paid_out_balance'] += (float)($sellerBalance['paid_out_balance'] ?? 0);
+            if (!empty($sellerBalance['currency'])) {
+                $summary['currency'] = (string)$sellerBalance['currency'];
+            }
+        }
+    }
+	
     if ($hasPayouts) {
         $select = ['p.*'];
         $joins = '';
@@ -167,10 +182,14 @@ try {
             $balance = function_exists('bv_seller_balance_get') ? bv_seller_balance_get((int)$row['seller_id']) : null;
             if (is_array($balance)) {
                 $row['_balance'] = $balance;
-                $summary['available_balance'] += (float)($balance['available_balance'] ?? 0);
-                $summary['pending_balance'] += (float)($balance['pending_balance'] ?? 0);
-                $summary['held_balance'] += (float)($balance['held_balance'] ?? 0);
-                $summary['paid_out_balance'] += (float)($balance['paid_out_balance'] ?? 0);
+                 $balanceSellerId = (int)($row['seller_id'] ?? 0);
+                if ($allSellerBalances === [] && $balanceSellerId > 0 && !isset($summarySellerIds[$balanceSellerId])) {
+                    $summarySellerIds[$balanceSellerId] = true;
+                    $summary['available_balance'] += (float)($balance['available_balance'] ?? 0);
+                    $summary['pending_balance'] += (float)($balance['pending_balance'] ?? 0);
+                    $summary['held_balance'] += (float)($balance['held_balance'] ?? 0);
+                    $summary['paid_out_balance'] += (float)($balance['paid_out_balance'] ?? 0);
+                }
                 if (!empty($balance['currency'])) {
                     $summary['currency'] = (string)$balance['currency'];
                 }
@@ -324,7 +343,7 @@ $dashboardUrl = 'index.php';
         <div class="card">
             <div class="label">Available balance</div>
             <div class="value"><?= money_fmt($summary['available_balance'], $summary['currency']) ?></div>
-            <div class="sub">From bv_seller_balance_get()</div>
+            <div class="sub">From seller balance helper totals</div>
         </div>
         <div class="card">
             <div class="label">Held / pending</div>
